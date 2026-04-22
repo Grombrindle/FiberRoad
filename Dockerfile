@@ -1,8 +1,18 @@
 # Stage 1: Build Composer dependencies
 FROM composer:2 AS composer
 
-# Install build dependencies and PHP extensions required by Composer
-RUN apk add --no-cache --virtual .build-deps \
+# Install runtime dependencies required by PHP extensions
+# DO NOT remove these packages; they are needed for the extensions to work
+RUN apk add --no-cache \
+    icu \
+    icu-data-full \
+    libpng \
+    libjpeg-turbo \
+    freetype \
+    oniguruma \
+    libxml2 \
+    libzip \
+    # Development packages needed to compile extensions
     icu-dev \
     libpng-dev \
     libjpeg-turbo-dev \
@@ -20,8 +30,7 @@ RUN apk add --no-cache --virtual .build-deps \
     bcmath \
     gd \
     intl \
-    zip \
-    && apk del .build-deps
+    zip
 
 WORKDIR /app
 COPY . .
@@ -32,10 +41,18 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction
 # Stage 2: Final runtime image
 FROM php:8.3-fpm-alpine
 
-# Install runtime system packages and build dependencies for extensions
+# Install runtime packages (both system and dev packages for extension compilation)
 RUN apk add --no-cache \
     nginx \
     supervisor \
+    icu \
+    icu-data-full \
+    libpng \
+    libjpeg-turbo \
+    freetype \
+    oniguruma \
+    libxml2 \
+    libzip \
     && apk add --no-cache --virtual .build-deps \
     icu-dev \
     libpng-dev \
