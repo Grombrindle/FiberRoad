@@ -1,17 +1,15 @@
 # Stage 1: Build Composer dependencies
 FROM composer:2 AS composer
 
-# Install system dependencies needed for PHP extensions in the Composer stage
-# The 'intl' extension requires icu-dev
-RUN apk add --no-cache \
+# Install build dependencies and PHP extensions required by Composer
+RUN apk add --no-cache --virtual .build-deps \
     icu-dev \
     libpng-dev \
     libjpeg-turbo-dev \
     freetype-dev \
     oniguruma-dev \
     libxml2-dev \
-    zip \
-    unzip \
+    libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-configure intl \
     && docker-php-ext-install -j$(nproc) \
@@ -22,30 +20,30 @@ RUN apk add --no-cache \
     bcmath \
     gd \
     intl \
-    zip
+    zip \
+    && apk del .build-deps
 
 WORKDIR /app
 COPY . .
 
-# Install dependencies without dev packages for production efficiency
+# Install production dependencies
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 # Stage 2: Final runtime image
 FROM php:8.3-fpm-alpine
 
-# Install system dependencies and PHP extensions required by Laravel
-# This includes ICU for intl extension
+# Install runtime system packages and build dependencies for extensions
 RUN apk add --no-cache \
     nginx \
     supervisor \
+    && apk add --no-cache --virtual .build-deps \
     icu-dev \
     libpng-dev \
     libjpeg-turbo-dev \
     freetype-dev \
     oniguruma-dev \
     libxml2-dev \
-    zip \
-    unzip \
+    libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-configure intl \
     && docker-php-ext-install -j$(nproc) \
@@ -56,29 +54,23 @@ RUN apk add --no-cache \
     bcmath \
     gd \
     intl \
-    zip
+    zip \
+    && apk del .build-deps
 
-# Copy application code
+# Copy application code and vendor from composer stage
 COPY . /var/www/html
+COPY --from=composer /app/vendor /var/www/html/vendor
 
-# Copy vendor folder from the composer stage
-COPY --from=composer /app/vendor/ /var/www/html/vendor/
-
-# Copy Nginx configuration file
+# Copy service configurations
 COPY nginx.conf /etc/nginx/nginx.conf
-
-# Copy Supervisor configuration file
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Set proper permissions for Laravel storage and cache
+# Set permissions and prepare directories
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
-    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache \
+    && mkdir -p /var/run/php \
+    && chown -R www-data:www-data /var/run/php
 
-# Create a directory for PHP-FPM socket
-RUN mkdir -p /var/run/php && chown -R www-data:www-data /var/run/php
-
-# Expose port 80 for Nginx
 EXPOSE 80
 
-# Start Supervisor which will manage both Nginx and PHP-FPM
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
