@@ -1,17 +1,10 @@
 # Stage 1: Build Composer dependencies
 FROM composer:2 AS composer
-WORKDIR /app
-COPY . .
-# Install dependencies without dev packages for production efficiency
-RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Stage 2: Final runtime image
-FROM php:8.3-fpm-alpine
-
-# Install system dependencies and PHP extensions required by Laravel
+# Install system dependencies needed for PHP extensions in the Composer stage
+# The 'intl' extension requires icu-dev
 RUN apk add --no-cache \
-    nginx \
-    supervisor \
+    icu-dev \
     libpng-dev \
     libjpeg-turbo-dev \
     freetype-dev \
@@ -20,7 +13,50 @@ RUN apk add --no-cache \
     zip \
     unzip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) pdo_mysql mbstring exif pcntl bcmath gd
+    && docker-php-ext-configure intl \
+    && docker-php-ext-install -j$(nproc) \
+    pdo_mysql \
+    mbstring \
+    exif \
+    pcntl \
+    bcmath \
+    gd \
+    intl \
+    zip
+
+WORKDIR /app
+COPY . .
+
+# Install dependencies without dev packages for production efficiency
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+# Stage 2: Final runtime image
+FROM php:8.3-fpm-alpine
+
+# Install system dependencies and PHP extensions required by Laravel
+# This includes ICU for intl extension
+RUN apk add --no-cache \
+    nginx \
+    supervisor \
+    icu-dev \
+    libpng-dev \
+    libjpeg-turbo-dev \
+    freetype-dev \
+    oniguruma-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-configure intl \
+    && docker-php-ext-install -j$(nproc) \
+    pdo_mysql \
+    mbstring \
+    exif \
+    pcntl \
+    bcmath \
+    gd \
+    intl \
+    zip
 
 # Copy application code
 COPY . /var/www/html
