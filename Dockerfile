@@ -1,8 +1,6 @@
 # Stage 1: Build Composer dependencies
 FROM composer:2 AS composer
 
-# Install runtime dependencies required by PHP extensions
-# DO NOT remove these packages; they are needed for the extensions to work
 RUN apk add --no-cache \
     icu \
     icu-data-full \
@@ -12,7 +10,6 @@ RUN apk add --no-cache \
     oniguruma \
     libxml2 \
     libzip \
-    # Development packages needed to compile extensions
     icu-dev \
     libpng-dev \
     libjpeg-turbo-dev \
@@ -34,14 +31,11 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 COPY . .
-
-# Install production dependencies
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 # Stage 2: Final runtime image
 FROM php:8.3-fpm-alpine
 
-# Install runtime packages (both system and dev packages for extension compilation)
 RUN apk add --no-cache \
     nginx \
     supervisor \
@@ -74,7 +68,7 @@ RUN apk add --no-cache \
     zip \
     && apk del .build-deps
 
-# Copy application code and vendor from composer stage
+# Copy application code and vendor
 COPY . /var/www/html
 COPY --from=composer /app/vendor /var/www/html/vendor
 
@@ -86,7 +80,9 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
     && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache \
     && mkdir -p /var/run/php \
-    && chown -R www-data:www-data /var/run/php
+    && chown -R www-data:www-data /var/run/php \
+    && mkdir -p /var/log/supervisor \
+    && chown -R www-data:www-data /var/log/supervisor
 
 EXPOSE 80
 
