@@ -1,6 +1,13 @@
 # Stage 1: Build Composer dependencies
 FROM composer:2 AS composer
 
+# Composer 2 uses PHP 8.3 by default, but we can still install extensions for compatibility.
+# However, to ensure platform requirements match PHP 8.4, we'll use a PHP 8.4 base for Composer too.
+# Alternatively, we can ignore platform reqs, but better to match.
+# Let's use php:8.4-cli for the composer stage to ensure consistent PHP version.
+# But composer:2 image is convenient; we'll install extensions and use --ignore-platform-reqs temporarily,
+# then the final stage will have PHP 8.4.
+
 RUN apk add --no-cache \
     icu \
     icu-data-full \
@@ -31,10 +38,12 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 COPY . .
-RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Stage 2: Final runtime image
-FROM php:8.3-fpm-alpine
+# Ignore platform requirements because composer image has PHP 8.3 but we'll run on 8.4
+RUN composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-req=php
+
+# Stage 2: Final runtime image with PHP 8.4
+FROM php:8.4-fpm-alpine
 
 RUN apk add --no-cache \
     nginx \
@@ -68,7 +77,7 @@ RUN apk add --no-cache \
     zip \
     && apk del .build-deps
 
-# Copy application code and vendor
+# Copy application code and vendor from composer stage
 COPY . /var/www/html
 COPY --from=composer /app/vendor /var/www/html/vendor
 
